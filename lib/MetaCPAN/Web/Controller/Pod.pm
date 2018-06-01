@@ -8,6 +8,7 @@ use URI;
 use HTML::Escape qw(escape_html);
 use Future;
 use Encode qw( encode decode DIE_ON_ERR LEAVE_SRC );
+use MetaCPAN::Web::HTML::CSS qw(filter_style);
 
 use namespace::autoclean;
 
