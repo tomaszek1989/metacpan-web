@@ -1,14 +1,12 @@
 package MetaCPAN::Web::Controller::Pod;
 
-use HTML::Restrict;
 use HTML::TokeParser;
 use Moose;
 use Try::Tiny;
 use URI;
-use HTML::Escape qw(escape_html);
 use Future;
 use Encode qw( encode decode DIE_ON_ERR LEAVE_SRC );
-use MetaCPAN::Web::HTML::CSS qw(filter_style);
+use MetaCPAN::Web::HTML qw(filter_html);
 
 use namespace::autoclean;
 
@@ -133,7 +131,7 @@ sub view : Private {
         }
     )->get;
 
-    my $pod_html = $self->filter_html( $pod->{raw}, $data );
+    my $pod_html = filter_html( $pod->{raw}, { %$data, source_host => $c->config->{source_host} } );
 
     my $release = $c->stash->{release};
 
@@ -189,7 +187,7 @@ sub pod2html : Path('/pod2html') {
         ->request( 'pod_render', undef, { pod => encode( 'UTF-8', $pod ) },
         'POST' )->get->{raw};
 
-    $html = $self->filter_html($html);
+    $html = filter_html($html);
 
     if ( $c->req->parameters->{raw} ) {
         $c->res->content_type('text/html');
@@ -220,94 +218,6 @@ sub pod2html : Path('/pod2html') {
             ( $abstract ? ( abstract => $abstract ) : () ),
         } );
     }
-}
-
-sub filter_html {
-    my ( $self, $html, $data ) = @_;
-
-    my $hr = HTML::Restrict->new(
-        uri_schemes =>
-            [ undef, 'http', 'https', 'data', 'mailto', 'irc', 'ircs' ],
-        rules => {
-            a       => [qw( href id target )],
-            b       => [],
-            br      => [],
-            caption => [],
-            center  => [],
-            code    => [ { class => qr/^language-\S+$/ } ],
-            dd      => [],
-            div     => [ { class => qr/^pod-errors(?:-detail)?$/ } ],
-            dl      => [],
-            dt      => ['id'],
-            em      => [],
-            h1      => ['id'],
-            h2      => ['id'],
-            h3      => ['id'],
-            h4      => ['id'],
-            h5      => ['id'],
-            h6      => ['id'],
-            i       => [],
-            li      => ['id'],
-            ol      => [],
-            p       => [],
-            pre     => [ {
-                class        => qr/^line-numbers$/,
-                'data-line'  => qr/^\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*$/,
-                'data-start' => qr/^\d+$/,
-            } ],
-            span   => [ { style => qr/^white-space: nowrap;$/ } ],
-            strong => [],
-            sub    => [],
-            sup    => [],
-            table  => [ qw( border cellspacing cellpadding align ), ],
-            tbody  => [],
-            th     => [],
-            td     => [],
-            tr     => [],
-            u      => [],
-            ul     => [ { id => qr/^index$/ } ],
-        },
-        replace_img => sub {
-
-            # last arg is $text, which we don't need
-            my ( $tagname, $attrs, undef ) = @_;
-            my $tag = '<img';
-            for my $attr (qw( alt border height width src title)) {
-                next
-                    unless exists $attrs->{$attr};
-                my $val = $attrs->{$attr};
-                if ( $attr eq 'src' ) {
-                    if ( $val =~ m{^(?:(?:https?|ftp):)?//|^data:} ) {
-
-                        # use directly
-                    }
-                    elsif ( $val =~ /^[0-9a-zA-Z.+-]+:/ ) {
-
-                        # bad protocol
-                        return '';
-                    }
-                    elsif ($data) {
-                        my $base = "https://st.aticpan.org/source/";
-                        if ( $val =~ s{^/}{} ) {
-                            $base .= "$data->{author}/$data->{release}/";
-                        }
-                        else {
-                            $base .= $data->{associated_pod}
-                                || "$data->{author}/$data->{release}/$data->{path}";
-                        }
-                        $val = URI->new_abs( $val, $base )->as_string;
-                    }
-                    else {
-                        $val = '/static/images/gray.png';
-                    }
-                }
-                $tag .= qq{ $attr="} . escape_html($val) . qq{"};
-            }
-            $tag .= ' />';
-            return $tag;
-        },
-    );
-    $hr->process($html);
 }
 
 __PACKAGE__->meta->make_immutable;
